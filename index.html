@@ -513,7 +513,7 @@
     let customMode = false;
 
     function renderOptions() {
-      const q = input.value.trim().toLowerCase();
+      const q = customMode ? input.value.trim().toLowerCase() : '';
       const filtered = exercises.filter(x => x.name.toLowerCase().includes(q));
       let html = filtered.map(x =>
         `<div class="combo-option" data-value="${escapeHtml(x.name)}">${escapeHtml(x.name)}</div>`
