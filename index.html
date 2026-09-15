@@ -116,7 +116,7 @@
     color: var(--paper);
     padding: 10px 11px;
     font-family: 'Inter', sans-serif;
-    font-size: 15px;
+    font-size: 16px;
     border-radius: 2px;
   }
   input[type="text"], input[type="number"], input[type="date"] {
@@ -406,7 +406,6 @@
           placeholder="Tap to pick an exercise…" value="${escapeHtml(currentValue || '')}" />
         <div class="combo-dropdown"></div>
       </div>
-      <div class="last-time-note" style="display:none;"></div>
     `;
   }
 
@@ -577,6 +576,7 @@
           <input type="date" name="entry_date" value="${e.entry_date || todayISO()}" required />
         </div>
       </div>
+      <div class="last-time-note" style="display:none;"></div>
       <div class="row">
         <div>
           ${setsEditorHtml(prefix, e.workout_sets)}
