@@ -221,6 +221,8 @@
 
 
   .combo-wrap { position: relative; }
+  .combo-wrap input { cursor: pointer; }
+  .combo-wrap input:not([readonly]) { cursor: text; }
   .combo-dropdown {
     display: none;
     position: absolute;
@@ -336,9 +338,9 @@
   function exerciseFieldHtml(fieldId, currentValue) {
     return `
       <div class="combo-wrap">
-        <input type="text" id="${fieldId}" name="exercise_name" required
+        <input type="text" id="${fieldId}" name="exercise_name" required readonly
           autocomplete="off"
-          placeholder="Type or pick an exercise…" value="${escapeHtml(currentValue || '')}" />
+          placeholder="Tap to pick an exercise…" value="${escapeHtml(currentValue || '')}" />
         <div class="combo-dropdown"></div>
       </div>
     `;
@@ -346,6 +348,7 @@
 
   function setupExerciseCombo(input) {
     const dropdown = input.nextElementSibling;
+    let customMode = false;
 
     function renderOptions() {
       const q = input.value.trim().toLowerCase();
@@ -353,24 +356,46 @@
       let html = filtered.map(x =>
         `<div class="combo-option" data-value="${escapeHtml(x.name)}">${escapeHtml(x.name)}</div>`
       ).join('');
-      if (q && !exercises.some(x => x.name.toLowerCase() === q)) {
-        html += `<div class="combo-option add-new" data-value="${escapeHtml(input.value.trim())}">Use "${escapeHtml(input.value.trim())}"</div>`;
+      if (customMode) {
+        if (input.value.trim() && !exercises.some(x => x.name.toLowerCase() === q)) {
+          html += `<div class="combo-option add-new" data-value="${escapeHtml(input.value.trim())}">Use "${escapeHtml(input.value.trim())}"</div>`;
+        }
+      } else {
+        html += `<div class="combo-option add-new" data-action="new">+ Enter a new exercise…</div>`;
       }
       dropdown.innerHTML = html;
-      dropdown.style.display = html ? 'block' : 'none';
+      dropdown.style.display = 'block';
     }
 
-    input.addEventListener('focus', renderOptions);
-    input.addEventListener('input', renderOptions);
+    input.addEventListener('focus', () => {
+      if (!customMode) renderOptions();
+    });
+    input.addEventListener('input', () => {
+      if (customMode) renderOptions();
+    });
     input.addEventListener('blur', () => {
-      setTimeout(() => { dropdown.style.display = 'none'; }, 150);
+      setTimeout(() => {
+        dropdown.style.display = 'none';
+        if (!customMode) input.readOnly = true;
+      }, 150);
     });
     dropdown.addEventListener('mousedown', (ev) => {
       const opt = ev.target.closest('.combo-option');
       if (!opt) return;
       ev.preventDefault();
-      input.value = opt.dataset.value;
-      dropdown.style.display = 'none';
+      if (opt.dataset.action === 'new') {
+        customMode = true;
+        input.readOnly = false;
+        input.value = '';
+        input.focus();
+        renderOptions();
+      } else {
+        input.value = opt.dataset.value;
+        customMode = false;
+        input.readOnly = true;
+        dropdown.style.display = 'none';
+        input.blur();
+      }
     });
   }
 
