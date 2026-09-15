@@ -220,6 +220,27 @@
 
 
 
+  .combo-wrap { position: relative; }
+  .combo-dropdown {
+    display: none;
+    position: absolute;
+    top: calc(100% + 3px);
+    left: 0;
+    right: 0;
+    background: var(--ink);
+    border: 1px solid var(--line);
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 20;
+  }
+  .combo-option {
+    padding: 11px 12px;
+    font-size: 15px;
+    cursor: pointer;
+  }
+  .combo-option:hover { background: var(--ink-soft); color: var(--coral); }
+  .combo-option.add-new { color: var(--steel); font-style: italic; }
+
   .status {
     font-size: 13px;
     color: var(--paper-dim);
@@ -314,10 +335,43 @@
 
   function exerciseFieldHtml(fieldId, currentValue) {
     return `
-      <input type="text" id="${fieldId}" name="exercise_name" required
-        list="exerciseList" autocomplete="off"
-        placeholder="Type or pick an exercise…" value="${escapeHtml(currentValue || '')}" />
+      <div class="combo-wrap">
+        <input type="text" id="${fieldId}" name="exercise_name" required
+          autocomplete="off"
+          placeholder="Type or pick an exercise…" value="${escapeHtml(currentValue || '')}" />
+        <div class="combo-dropdown"></div>
+      </div>
     `;
+  }
+
+  function setupExerciseCombo(input) {
+    const dropdown = input.nextElementSibling;
+
+    function renderOptions() {
+      const q = input.value.trim().toLowerCase();
+      const filtered = exercises.filter(x => x.name.toLowerCase().includes(q));
+      let html = filtered.map(x =>
+        `<div class="combo-option" data-value="${escapeHtml(x.name)}">${escapeHtml(x.name)}</div>`
+      ).join('');
+      if (q && !exercises.some(x => x.name.toLowerCase() === q)) {
+        html += `<div class="combo-option add-new" data-value="${escapeHtml(input.value.trim())}">Use "${escapeHtml(input.value.trim())}"</div>`;
+      }
+      dropdown.innerHTML = html;
+      dropdown.style.display = html ? 'block' : 'none';
+    }
+
+    input.addEventListener('focus', renderOptions);
+    input.addEventListener('input', renderOptions);
+    input.addEventListener('blur', () => {
+      setTimeout(() => { dropdown.style.display = 'none'; }, 150);
+    });
+    dropdown.addEventListener('mousedown', (ev) => {
+      const opt = ev.target.closest('.combo-option');
+      if (!opt) return;
+      ev.preventDefault();
+      input.value = opt.dataset.value;
+      dropdown.style.display = 'none';
+    });
   }
 
   function entryFormFieldsHtml(prefix, e) {
@@ -360,8 +414,6 @@
     const profileButtons = profiles.map(p => `
       <button class="profile-btn ${p.id === activeProfileId ? 'active' : ''}" data-id="${p.id}">${escapeHtml(p.name)}</button>
     `).join('');
-
-    const exerciseOptions = exercises.map(x => `<option value="${escapeHtml(x.name)}"></option>`).join('');
 
     const groups = groupByDay(entries);
     const days = Object.keys(groups);
@@ -407,8 +459,6 @@
     }
 
     app.innerHTML = `
-      <datalist id="exerciseList">${exerciseOptions}</datalist>
-
       <div class="profiles">${profileButtons}</div>
 
       <section class="card">
@@ -425,6 +475,8 @@
         ${historyHtml}
       </section>
     `;
+
+    document.querySelectorAll('input[name="exercise_name"]').forEach(setupExerciseCombo);
 
     document.querySelectorAll('.profile-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
