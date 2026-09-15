@@ -512,6 +512,7 @@
   function setupExerciseCombo(input, onSelectExisting) {
     const dropdown = input.nextElementSibling;
     let customMode = false;
+    let suppressBlur = false;
 
     function renderOptions() {
       const q = input.value.trim().toLowerCase();
@@ -537,6 +538,7 @@
       if (customMode) renderOptions();
     });
     input.addEventListener('blur', () => {
+      if (suppressBlur) { suppressBlur = false; return; }
       setTimeout(() => {
         dropdown.style.display = 'none';
         if (!customMode) input.readOnly = true;
@@ -550,7 +552,9 @@
         customMode = true;
         input.readOnly = false;
         input.value = '';
-        input.focus();
+        suppressBlur = true;
+        input.blur();
+        setTimeout(() => input.focus(), 0);
         renderOptions();
         if (onSelectExisting) onSelectExisting(null);
       } else {
