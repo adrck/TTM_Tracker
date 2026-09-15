@@ -362,6 +362,9 @@
   function applyLastTime(input, value) {
     const form = input.closest('form');
     const note = form.querySelector('.last-time-note');
+    form.querySelector('[name="sets"]').value = '';
+    form.querySelector('[name="reps"]').value = '';
+    form.querySelector('[name="weight"]').value = '';
     if (!value) { note.style.display = 'none'; note.textContent = ''; return; }
     const last = entries.find(e => e.exercise_name.toLowerCase() === value.trim().toLowerCase());
     if (!last) { note.style.display = 'none'; note.textContent = ''; return; }
