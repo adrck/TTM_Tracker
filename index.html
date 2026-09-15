@@ -504,7 +504,8 @@
     }
     replaceSetRows(editorEl, last.workout_sets);
     const summary = setsSummary(last.workout_sets) || 'no details recorded';
-    note.textContent = `Last time (${formatShortDate(last.entry_date)}): ${summary}`;
+    const label = last.entry_date === todayISO() ? 'Already logged today' : `Last time (${formatShortDate(last.entry_date)})`;
+    note.textContent = `${label}: ${summary}`;
     note.style.display = 'block';
   }
 
@@ -724,15 +725,39 @@
     const entryPayload = { profile_id: activeProfileId, ...readEntryForm(form) };
     const sets = readSetsFromForm(form);
 
-    const { data, error } = await supabase.from('workout_entries').insert(entryPayload).select().single();
-    if (error) {
-      alert('Could not save: ' + error.message);
-      submitBtn.disabled = false;
-      submitBtn.textContent = 'Add entry';
-      return;
+    // Same exercise + same date = same entry. If one already exists today, merge into it
+    // instead of creating a duplicate (handles supersets where you log a set, switch to
+    // another exercise, then come back).
+    const existing = entries.find(e =>
+      e.exercise_name.toLowerCase() === entryPayload.exercise_name.toLowerCase() &&
+      e.entry_date === entryPayload.entry_date
+    );
+
+    let entryId;
+    if (existing) {
+      const mergedComment = entryPayload.comment || existing.comment || null;
+      const { error } = await supabase.from('workout_entries').update({ comment: mergedComment }).eq('id', existing.id);
+      if (error) {
+        alert('Could not save: ' + error.message);
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Add entry';
+        return;
+      }
+      entryId = existing.id;
+      await supabase.from('workout_sets').delete().eq('entry_id', entryId);
+    } else {
+      const { data, error } = await supabase.from('workout_entries').insert(entryPayload).select().single();
+      if (error) {
+        alert('Could not save: ' + error.message);
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Add entry';
+        return;
+      }
+      entryId = data.id;
     }
+
     if (sets.length) {
-      const setRows = sets.map((s, i) => ({ entry_id: data.id, set_number: i + 1, reps: s.reps, weight: s.weight }));
+      const setRows = sets.map((s, i) => ({ entry_id: entryId, set_number: i + 1, reps: s.reps, weight: s.weight }));
       const { error: setsError } = await supabase.from('workout_sets').insert(setRows);
       if (setsError) alert('Entry saved, but sets failed to save: ' + setsError.message);
     }
