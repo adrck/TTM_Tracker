@@ -243,6 +243,13 @@
   .combo-option:hover { background: var(--ink-soft); color: var(--coral); }
   .combo-option.add-new { color: var(--steel); font-style: italic; }
 
+  .last-time-note {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--coral);
+    margin: -6px 0 12px;
+  }
+
   .status {
     font-size: 13px;
     color: var(--paper-dim);
@@ -343,10 +350,33 @@
           placeholder="Tap to pick an exercise…" value="${escapeHtml(currentValue || '')}" />
         <div class="combo-dropdown"></div>
       </div>
+      <div class="last-time-note" style="display:none;"></div>
     `;
   }
 
-  function setupExerciseCombo(input) {
+  function formatShortDate(iso) {
+    const d = new Date(iso + 'T00:00:00');
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  }
+
+  function applyLastTime(input, value) {
+    const form = input.closest('form');
+    const note = form.querySelector('.last-time-note');
+    if (!value) { note.style.display = 'none'; note.textContent = ''; return; }
+    const last = entries.find(e => e.exercise_name.toLowerCase() === value.trim().toLowerCase());
+    if (!last) { note.style.display = 'none'; note.textContent = ''; return; }
+    form.querySelector('[name="sets"]').value = last.sets ?? '';
+    form.querySelector('[name="reps"]').value = last.reps ?? '';
+    form.querySelector('[name="weight"]').value = last.weight ?? '';
+    note.textContent = `Last time (${formatShortDate(last.entry_date)}): ${[
+      last.sets != null ? last.sets + ' sets' : null,
+      last.reps != null ? last.reps + ' reps' : null,
+      last.weight != null ? last.weight + ' kg' : null
+    ].filter(Boolean).join(' · ') || 'no details recorded'}`;
+    note.style.display = 'block';
+  }
+
+  function setupExerciseCombo(input, onSelectExisting) {
     const dropdown = input.nextElementSibling;
     let customMode = false;
 
@@ -389,12 +419,14 @@
         input.value = '';
         input.focus();
         renderOptions();
+        if (onSelectExisting) onSelectExisting(null);
       } else {
         input.value = opt.dataset.value;
         customMode = false;
         input.readOnly = true;
         dropdown.style.display = 'none';
         input.blur();
+        if (onSelectExisting) onSelectExisting(opt.dataset.value);
       }
     });
   }
@@ -501,7 +533,10 @@
       </section>
     `;
 
-    document.querySelectorAll('input[name="exercise_name"]').forEach(setupExerciseCombo);
+    document.querySelectorAll('input[name="exercise_name"]').forEach(inputEl => {
+      const isNewEntryForm = inputEl.closest('form').id === 'entryForm';
+      setupExerciseCombo(inputEl, isNewEntryForm ? (value) => applyLastTime(inputEl, value) : null);
+    });
 
     document.querySelectorAll('.profile-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
