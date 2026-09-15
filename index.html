@@ -184,6 +184,41 @@
     text-align: center;
   }
 
+  .entry { cursor: pointer; }
+  .entry:hover .entry-name { color: var(--coral); }
+
+  .edit-panel {
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .edit-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .edit-actions button { flex: 1; }
+  button.save-btn {
+    background: var(--coral);
+    color: var(--ink);
+    border: none;
+    padding: 11px;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 15px;
+    cursor: pointer;
+  }
+  button.cancel-btn, button.del-btn-full {
+    background: none;
+    border: 1px solid var(--line);
+    color: var(--paper-dim);
+    padding: 11px;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 15px;
+    cursor: pointer;
+  }
+  button.del-btn-full:hover { color: var(--coral); border-color: var(--coral); }
+
+
+
   .status {
     font-size: 13px;
     color: var(--paper-dim);
@@ -218,6 +253,8 @@
   let profiles = [];
   let activeProfileId = localStorage.getItem('activeProfileId') || null;
   let entries = [];
+  let exercises = [];
+  let editingId = null;
 
   function todayISO() {
     const d = new Date();
@@ -238,6 +275,19 @@
     if (error) { app.innerHTML = `<div class="status">Couldn't load profiles: ${error.message}</div>`; return; }
     profiles = data;
     if (!activeProfileId && profiles.length) activeProfileId = profiles[0].id;
+  }
+
+  async function loadExercises() {
+    const { data, error } = await supabase.from('exercises').select('*').order('name');
+    if (error) { console.error(error); exercises = []; return; }
+    exercises = data;
+  }
+
+  async function ensureExercise(name) {
+    const exists = exercises.some(e => e.name.toLowerCase() === name.toLowerCase());
+    if (exists) return;
+    const { error } = await supabase.from('exercises').insert({ name });
+    if (!error) await loadExercises();
   }
 
   async function loadEntries() {
@@ -261,10 +311,56 @@
     return groups;
   }
 
+  function exerciseFieldHtml(fieldId, currentValue) {
+    return `
+      <input type="text" id="${fieldId}" name="exercise_name" required
+        list="exerciseList" autocomplete="off"
+        placeholder="Type or pick an exercise…" value="${escapeHtml(currentValue || '')}" />
+    `;
+  }
+
+  function entryFormFieldsHtml(prefix, e) {
+    e = e || {};
+    return `
+      <div class="row">
+        <div>
+          <label>Exercise</label>
+          ${exerciseFieldHtml(prefix + '_exercise', e.exercise_name)}
+        </div>
+        <div style="max-width:150px;">
+          <label>Date</label>
+          <input type="date" name="entry_date" value="${e.entry_date || todayISO()}" required />
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Sets</label>
+          <input type="number" name="sets" min="0" step="1" placeholder="3" value="${e.sets ?? ''}" />
+        </div>
+        <div>
+          <label>Reps</label>
+          <input type="number" name="reps" min="0" step="1" placeholder="10" value="${e.reps ?? ''}" />
+        </div>
+        <div>
+          <label>Weight (kg)</label>
+          <input type="number" name="weight" min="0" step="0.5" placeholder="optional" value="${e.weight ?? ''}" />
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Comment <span style="text-transform:none;">(pain, form notes, how it felt…)</span></label>
+          <textarea name="comment" placeholder="optional">${escapeHtml(e.comment || '')}</textarea>
+        </div>
+      </div>
+    `;
+  }
+
   function render() {
     const profileButtons = profiles.map(p => `
       <button class="profile-btn ${p.id === activeProfileId ? 'active' : ''}" data-id="${p.id}">${escapeHtml(p.name)}</button>
     `).join('');
+
+    const exerciseOptions = exercises.map(x => `<option value="${escapeHtml(x.name)}"></option>`).join('');
 
     const groups = groupByDay(entries);
     const days = Object.keys(groups);
@@ -276,66 +372,55 @@
       historyHtml = days.map(day => `
         <div class="day-group">
           <div class="day-label">${formatDay(day)}</div>
-          ${groups[day].map(e => `
-            <div class="entry" data-entry-id="${e.id}">
-              <div class="entry-main">
-                <div class="entry-name">${escapeHtml(e.exercise_name)}</div>
-                <div class="entry-stats">${[
-                  e.sets != null ? e.sets + ' sets' : null,
-                  e.reps != null ? e.reps + ' reps' : null,
-                  e.weight != null ? e.weight + ' kg' : null
-                ].filter(Boolean).join(' · ') || '—'}</div>
-                ${e.comment ? `<div class="entry-comment">${escapeHtml(e.comment)}</div>` : ''}
+          ${groups[day].map(e => {
+            if (editingId === e.id) {
+              return `
+                <div class="edit-panel">
+                  <form class="edit-form" data-edit-id="${e.id}">
+                    ${entryFormFieldsHtml('edit', e)}
+                    <div class="edit-actions">
+                      <button type="submit" class="save-btn">Save</button>
+                      <button type="button" class="cancel-btn" data-cancel="1">Cancel</button>
+                      <button type="button" class="del-btn-full" data-del-id="${e.id}">Delete</button>
+                    </div>
+                  </form>
+                </div>
+              `;
+            }
+            return `
+              <div class="entry" data-entry-id="${e.id}">
+                <div class="entry-main">
+                  <div class="entry-name">${escapeHtml(e.exercise_name)}</div>
+                  <div class="entry-stats">${[
+                    e.sets != null ? e.sets + ' sets' : null,
+                    e.reps != null ? e.reps + ' reps' : null,
+                    e.weight != null ? e.weight + ' kg' : null
+                  ].filter(Boolean).join(' · ') || '—'}</div>
+                  ${e.comment ? `<div class="entry-comment">${escapeHtml(e.comment)}</div>` : ''}
+                </div>
               </div>
-              <button class="del-btn" data-del-id="${e.id}">DEL</button>
-            </div>
-          `).join('')}
+            `;
+          }).join('')}
         </div>
       `).join('');
     }
 
     app.innerHTML = `
+      <datalist id="exerciseList">${exerciseOptions}</datalist>
+
       <div class="profiles">${profileButtons}</div>
 
       <section class="card">
         <h2>Log a session</h2>
         <form id="entryForm">
-          <div class="row">
-            <div>
-              <label>Exercise</label>
-              <input type="text" name="exercise_name" required placeholder="e.g. Bench press" />
-            </div>
-            <div style="max-width:150px;">
-              <label>Date</label>
-              <input type="date" name="entry_date" value="${todayISO()}" required />
-            </div>
-          </div>
-          <div class="row">
-            <div>
-              <label>Sets</label>
-              <input type="number" name="sets" min="0" step="1" placeholder="3" />
-            </div>
-            <div>
-              <label>Reps</label>
-              <input type="number" name="reps" min="0" step="1" placeholder="10" />
-            </div>
-            <div>
-              <label>Weight (kg)</label>
-              <input type="number" name="weight" min="0" step="0.5" placeholder="optional" />
-            </div>
-          </div>
-          <div class="row">
-            <div>
-              <label>Comment <span style="text-transform:none;">(pain, form notes, how it felt…)</span></label>
-              <textarea name="comment" placeholder="optional"></textarea>
-            </div>
-          </div>
+          ${entryFormFieldsHtml('new', null)}
           <button type="submit" class="submit">Add entry</button>
         </form>
       </section>
 
       <section>
         <h2 class="display" style="font-size:20px; color: var(--steel); margin-bottom: 4px;">HISTORY</h2>
+        <div style="font-size:12px; color: var(--paper-dim); margin-bottom: 10px;">Tap an entry to view or edit it.</div>
         ${historyHtml}
       </section>
     `;
@@ -344,6 +429,7 @@
       btn.addEventListener('click', async () => {
         activeProfileId = btn.dataset.id;
         localStorage.setItem('activeProfileId', activeProfileId);
+        editingId = null;
         await loadEntries();
         render();
       });
@@ -351,15 +437,46 @@
 
     document.getElementById('entryForm').addEventListener('submit', onSubmit);
 
-    document.querySelectorAll('.del-btn').forEach(btn => {
+    document.querySelectorAll('.entry').forEach(el => {
+      el.addEventListener('click', () => {
+        editingId = el.dataset.entryId;
+        render();
+      });
+    });
+
+    document.querySelectorAll('.edit-form').forEach(form => {
+      form.addEventListener('submit', onEditSubmit);
+    });
+
+    document.querySelectorAll('[data-cancel]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        editingId = null;
+        render();
+      });
+    });
+
+    document.querySelectorAll('.del-btn-full').forEach(btn => {
       btn.addEventListener('click', async () => {
         if (!confirm('Delete this entry?')) return;
         const id = btn.dataset.delId;
         await supabase.from('workout_entries').delete().eq('id', id);
+        editingId = null;
         await loadEntries();
         render();
       });
     });
+  }
+
+  function readEntryForm(form) {
+    const fd = new FormData(form);
+    return {
+      exercise_name: fd.get('exercise_name').trim(),
+      entry_date: fd.get('entry_date'),
+      sets: fd.get('sets') ? Number(fd.get('sets')) : null,
+      reps: fd.get('reps') ? Number(fd.get('reps')) : null,
+      weight: fd.get('weight') ? Number(fd.get('weight')) : null,
+      comment: fd.get('comment') ? fd.get('comment').trim() : null,
+    };
   }
 
   async function onSubmit(ev) {
@@ -369,16 +486,7 @@
     submitBtn.disabled = true;
     submitBtn.textContent = 'Saving…';
 
-    const fd = new FormData(form);
-    const payload = {
-      profile_id: activeProfileId,
-      exercise_name: fd.get('exercise_name').trim(),
-      entry_date: fd.get('entry_date'),
-      sets: fd.get('sets') ? Number(fd.get('sets')) : null,
-      reps: fd.get('reps') ? Number(fd.get('reps')) : null,
-      weight: fd.get('weight') ? Number(fd.get('weight')) : null,
-      comment: fd.get('comment') ? fd.get('comment').trim() : null,
-    };
+    const payload = { profile_id: activeProfileId, ...readEntryForm(form) };
 
     const { error } = await supabase.from('workout_entries').insert(payload);
     if (error) {
@@ -387,6 +495,29 @@
       submitBtn.textContent = 'Add entry';
       return;
     }
+    await ensureExercise(payload.exercise_name);
+    await loadEntries();
+    render();
+  }
+
+  async function onEditSubmit(ev) {
+    ev.preventDefault();
+    const form = ev.target;
+    const id = form.dataset.editId;
+    const saveBtn = form.querySelector('.save-btn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+
+    const payload = readEntryForm(form);
+    const { error } = await supabase.from('workout_entries').update(payload).eq('id', id);
+    if (error) {
+      alert('Could not save: ' + error.message);
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save';
+      return;
+    }
+    await ensureExercise(payload.exercise_name);
+    editingId = null;
     await loadEntries();
     render();
   }
@@ -399,6 +530,7 @@
 
   (async function init() {
     await loadProfiles();
+    await loadExercises();
     await loadEntries();
     render();
   })();
