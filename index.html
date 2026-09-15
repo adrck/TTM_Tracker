@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Logbook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #12161C;
+    --ink-soft: #1B212A;
+    --paper: #F1EFE8;
+    --paper-dim: #C9C5B8;
+    --coral: #FF5A36;
+    --steel: #6C8A9A;
+    --line: rgba(241,239,232,0.12);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--ink);
+    color: var(--paper);
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    line-height: 1.45;
+  }
+  .display {
+    font-family: 'Bebas Neue', sans-serif;
+    letter-spacing: 0.02em;
+  }
+  .mono { font-family: 'Space Mono', monospace; }
+
+  .wrap {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 28px 20px 80px;
+  }
+
+  header.top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 22px;
+  }
+  header.top h1 {
+    font-size: 40px;
+    margin: 0;
+    line-height: 0.9;
+  }
+  header.top .today {
+    font-size: 13px;
+    color: var(--paper-dim);
+  }
+
+  .profiles {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 26px;
+  }
+  .profile-btn {
+    flex: 1;
+    background: var(--ink-soft);
+    border: 1px solid var(--line);
+    color: var(--paper-dim);
+    padding: 14px 12px;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+  .profile-btn.active {
+    color: var(--paper);
+    border-color: var(--coral);
+    box-shadow: inset 0 -3px 0 var(--coral);
+  }
+  .profile-btn:hover { color: var(--paper); }
+
+  section.card {
+    background: var(--ink-soft);
+    border: 1px solid var(--line);
+    padding: 20px;
+    margin-bottom: 24px;
+  }
+  section.card h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    margin: 0 0 16px;
+    color: var(--coral);
+    letter-spacing: 0.02em;
+  }
+
+  .row { display: flex; gap: 10px; margin-bottom: 12px; }
+  .row > div { flex: 1; }
+  label {
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--paper-dim);
+    margin-bottom: 6px;
+  }
+  input, textarea {
+    width: 100%;
+    background: var(--ink);
+    border: 1px solid var(--line);
+    color: var(--paper);
+    padding: 10px 11px;
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    border-radius: 2px;
+  }
+  input:focus, textarea:focus {
+    outline: none;
+    border-color: var(--coral);
+  }
+  textarea { resize: vertical; min-height: 54px; }
+
+  button.submit {
+    background: var(--coral);
+    color: var(--ink);
+    border: none;
+    padding: 13px 18px;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 18px;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    width: 100%;
+    margin-top: 4px;
+  }
+  button.submit:hover { background: #ff7250; }
+  button.submit:disabled { background: var(--paper-dim); cursor: default; }
+
+  .day-group { margin-bottom: 22px; }
+  .day-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--steel);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 10px;
+  }
+  .entry {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--line);
+    gap: 12px;
+  }
+  .entry:last-child { border-bottom: none; }
+  .entry-main { flex: 1; }
+  .entry-name { font-weight: 600; font-size: 16px; }
+  .entry-stats {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    color: var(--steel);
+    margin-top: 3px;
+  }
+  .entry-comment {
+    font-size: 13px;
+    color: var(--paper-dim);
+    margin-top: 6px;
+    font-style: italic;
+  }
+  .del-btn {
+    background: none;
+    border: 1px solid var(--line);
+    color: var(--paper-dim);
+    font-size: 11px;
+    padding: 5px 9px;
+    cursor: pointer;
+    letter-spacing: 0.03em;
+  }
+  .del-btn:hover { color: var(--coral); border-color: var(--coral); }
+
+  .empty {
+    color: var(--paper-dim);
+    font-size: 14px;
+    padding: 20px 0;
+    text-align: center;
+  }
+
+  .status {
+    font-size: 13px;
+    color: var(--paper-dim);
+    text-align: center;
+    padding: 40px 0;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1 class="display">LOGBOOK</h1>
+    <div class="today mono" id="todayLabel"></div>
+  </header>
+
+  <div id="app">
+    <div class="status">Loading…</div>
+  </div>
+</div>
+
+<script type="module">
+  import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+  const SUPABASE_URL = 'https://lalkhiagqgfdjkomyyjt.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_RCyIW9VQ-Uo23cu2L1Pk5A_LeP5-Uw5';
+  const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  const app = document.getElementById('app');
+  const todayLabel = document.getElementById('todayLabel');
+  todayLabel.textContent = new Date().toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+
+  let profiles = [];
+  let activeProfileId = localStorage.getItem('activeProfileId') || null;
+  let entries = [];
+
+  function todayISO() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+
+  function formatDay(iso) {
+    const d = new Date(iso + 'T00:00:00');
+    const t = new Date(); t.setHours(0,0,0,0);
+    const diffDays = Math.round((t - d) / 86400000);
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+  }
+
+  async function loadProfiles() {
+    const { data, error } = await supabase.from('profiles').select('*').order('created_at');
+    if (error) { app.innerHTML = `<div class="status">Couldn't load profiles: ${error.message}</div>`; return; }
+    profiles = data;
+    if (!activeProfileId && profiles.length) activeProfileId = profiles[0].id;
+  }
+
+  async function loadEntries() {
+    if (!activeProfileId) { entries = []; return; }
+    const { data, error } = await supabase
+      .from('workout_entries')
+      .select('*')
+      .eq('profile_id', activeProfileId)
+      .order('entry_date', { ascending: false })
+      .order('created_at', { ascending: false });
+    if (error) { console.error(error); entries = []; return; }
+    entries = data;
+  }
+
+  function groupByDay(list) {
+    const groups = {};
+    for (const e of list) {
+      if (!groups[e.entry_date]) groups[e.entry_date] = [];
+      groups[e.entry_date].push(e);
+    }
+    return groups;
+  }
+
+  function render() {
+    const profileButtons = profiles.map(p => `
+      <button class="profile-btn ${p.id === activeProfileId ? 'active' : ''}" data-id="${p.id}">${escapeHtml(p.name)}</button>
+    `).join('');
+
+    const groups = groupByDay(entries);
+    const days = Object.keys(groups);
+
+    let historyHtml = '';
+    if (days.length === 0) {
+      historyHtml = `<div class="empty">No sessions logged yet. Add your first one above.</div>`;
+    } else {
+      historyHtml = days.map(day => `
+        <div class="day-group">
+          <div class="day-label">${formatDay(day)}</div>
+          ${groups[day].map(e => `
+            <div class="entry" data-entry-id="${e.id}">
+              <div class="entry-main">
+                <div class="entry-name">${escapeHtml(e.exercise_name)}</div>
+                <div class="entry-stats">${[
+                  e.sets != null ? e.sets + ' sets' : null,
+                  e.reps != null ? e.reps + ' reps' : null,
+                  e.weight != null ? e.weight + ' kg' : null
+                ].filter(Boolean).join(' · ') || '—'}</div>
+                ${e.comment ? `<div class="entry-comment">${escapeHtml(e.comment)}</div>` : ''}
+              </div>
+              <button class="del-btn" data-del-id="${e.id}">DEL</button>
+            </div>
+          `).join('')}
+        </div>
+      `).join('');
+    }
+
+    app.innerHTML = `
+      <div class="profiles">${profileButtons}</div>
+
+      <section class="card">
+        <h2>Log a session</h2>
+        <form id="entryForm">
+          <div class="row">
+            <div>
+              <label>Exercise</label>
+              <input type="text" name="exercise_name" required placeholder="e.g. Bench press" />
+            </div>
+            <div style="max-width:150px;">
+              <label>Date</label>
+              <input type="date" name="entry_date" value="${todayISO()}" required />
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label>Sets</label>
+              <input type="number" name="sets" min="0" step="1" placeholder="3" />
+            </div>
+            <div>
+              <label>Reps</label>
+              <input type="number" name="reps" min="0" step="1" placeholder="10" />
+            </div>
+            <div>
+              <label>Weight (kg)</label>
+              <input type="number" name="weight" min="0" step="0.5" placeholder="optional" />
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label>Comment <span style="text-transform:none;">(pain, form notes, how it felt…)</span></label>
+              <textarea name="comment" placeholder="optional"></textarea>
+            </div>
+          </div>
+          <button type="submit" class="submit">Add entry</button>
+        </form>
+      </section>
+
+      <section>
+        <h2 class="display" style="font-size:20px; color: var(--steel); margin-bottom: 4px;">HISTORY</h2>
+        ${historyHtml}
+      </section>
+    `;
+
+    document.querySelectorAll('.profile-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        activeProfileId = btn.dataset.id;
+        localStorage.setItem('activeProfileId', activeProfileId);
+        await loadEntries();
+        render();
+      });
+    });
+
+    document.getElementById('entryForm').addEventListener('submit', onSubmit);
+
+    document.querySelectorAll('.del-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('Delete this entry?')) return;
+        const id = btn.dataset.delId;
+        await supabase.from('workout_entries').delete().eq('id', id);
+        await loadEntries();
+        render();
+      });
+    });
+  }
+
+  async function onSubmit(ev) {
+    ev.preventDefault();
+    const form = ev.target;
+    const submitBtn = form.querySelector('.submit');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving…';
+
+    const fd = new FormData(form);
+    const payload = {
+      profile_id: activeProfileId,
+      exercise_name: fd.get('exercise_name').trim(),
+      entry_date: fd.get('entry_date'),
+      sets: fd.get('sets') ? Number(fd.get('sets')) : null,
+      reps: fd.get('reps') ? Number(fd.get('reps')) : null,
+      weight: fd.get('weight') ? Number(fd.get('weight')) : null,
+      comment: fd.get('comment') ? fd.get('comment').trim() : null,
+    };
+
+    const { error } = await supabase.from('workout_entries').insert(payload);
+    if (error) {
+      alert('Could not save: ' + error.message);
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Add entry';
+      return;
+    }
+    await loadEntries();
+    render();
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str ?? '';
+    return div.innerHTML;
+  }
+
+  (async function init() {
+    await loadProfiles();
+    await loadEntries();
+    render();
+  })();
+</script>
+</body>
+</html>
