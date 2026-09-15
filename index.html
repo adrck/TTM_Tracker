@@ -532,6 +532,9 @@
     input.addEventListener('focus', () => {
       if (!customMode) renderOptions();
     });
+    input.addEventListener('click', () => {
+      if (!customMode) renderOptions();
+    });
     input.addEventListener('input', () => {
       if (customMode) renderOptions();
     });
