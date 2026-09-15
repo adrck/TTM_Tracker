@@ -112,6 +112,9 @@
     font-size: 15px;
     border-radius: 2px;
   }
+  input[type="text"], input[type="number"], input[type="date"] {
+    height: 44px;
+  }
   input:focus, textarea:focus {
     outline: none;
     border-color: var(--coral);
@@ -247,8 +250,47 @@
     font-family: 'Space Mono', monospace;
     font-size: 12px;
     color: var(--coral);
-    margin: -6px 0 12px;
+    margin: 6px 0 12px;
   }
+
+  .sets-editor label { margin-bottom: 8px; }
+  .set-rows { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+  .set-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .set-num {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--steel);
+    width: 20px;
+    flex-shrink: 0;
+    text-align: center;
+  }
+  .set-row input { flex: 1; min-width: 0; }
+  .set-remove {
+    background: none;
+    border: 1px solid var(--line);
+    color: var(--paper-dim);
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .set-remove:hover { color: var(--coral); border-color: var(--coral); }
+  .add-set-btn {
+    background: none;
+    border: 1px dashed var(--line);
+    color: var(--steel);
+    padding: 9px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    width: 100%;
+  }
+  .add-set-btn:hover { color: var(--coral); border-color: var(--coral); }
 
   .status {
     font-size: 13px;
@@ -325,12 +367,15 @@
     if (!activeProfileId) { entries = []; return; }
     const { data, error } = await supabase
       .from('workout_entries')
-      .select('*')
+      .select('*, workout_sets(*)')
       .eq('profile_id', activeProfileId)
       .order('entry_date', { ascending: false })
       .order('created_at', { ascending: false });
     if (error) { console.error(error); entries = []; return; }
-    entries = data;
+    entries = data.map(e => ({
+      ...e,
+      workout_sets: (e.workout_sets || []).slice().sort((a, b) => a.set_number - b.set_number)
+    }));
   }
 
   function groupByDay(list) {
@@ -359,23 +404,97 @@
     return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
   }
 
+  function setsSummary(sets) {
+    if (!sets || sets.length === 0) return null;
+    return sets.map(s => {
+      if (s.reps != null && s.weight != null) return `${s.reps}×${s.weight}kg`;
+      if (s.reps != null) return `${s.reps} reps`;
+      if (s.weight != null) return `${s.weight}kg`;
+      return '—';
+    }).join(' · ');
+  }
+
+  function setRowHtml(index, s) {
+    s = s || {};
+    return `
+      <div class="set-row" data-index="${index}">
+        <span class="set-num">${index + 1}</span>
+        <input type="number" class="set-reps" min="0" step="1" placeholder="reps" value="${s.reps ?? ''}" />
+        <input type="number" class="set-weight" min="0" step="0.5" placeholder="kg" value="${s.weight ?? ''}" />
+        <button type="button" class="set-remove" title="Remove set">×</button>
+      </div>
+    `;
+  }
+
+  function setsEditorHtml(prefix, sets) {
+    const rows = (sets && sets.length ? sets : [{}, {}, {}]).map((s, i) => setRowHtml(i, s)).join('');
+    return `
+      <div class="sets-editor" id="${prefix}_setsEditor">
+        <label>Sets</label>
+        <div class="set-rows">${rows}</div>
+        <button type="button" class="add-set-btn">+ Add set</button>
+      </div>
+    `;
+  }
+
+  function renumberSetRows(container) {
+    container.querySelectorAll('.set-row').forEach((row, i) => {
+      row.dataset.index = i;
+      row.querySelector('.set-num').textContent = i + 1;
+    });
+  }
+
+  function setupSetsEditor(editorEl) {
+    const rowsEl = editorEl.querySelector('.set-rows');
+    editorEl.querySelector('.add-set-btn').addEventListener('click', () => {
+      const div = document.createElement('div');
+      div.innerHTML = setRowHtml(rowsEl.children.length, {});
+      rowsEl.appendChild(div.firstElementChild);
+      renumberSetRows(rowsEl);
+    });
+    rowsEl.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('.set-remove');
+      if (!btn) return;
+      btn.closest('.set-row').remove();
+      renumberSetRows(rowsEl);
+    });
+  }
+
+  function replaceSetRows(editorEl, sets) {
+    const rowsEl = editorEl.querySelector('.set-rows');
+    const list = sets && sets.length ? sets : [{}, {}, {}];
+    rowsEl.innerHTML = list.map((s, i) => setRowHtml(i, s)).join('');
+  }
+
+  function readSetsFromForm(form) {
+    return Array.from(form.querySelectorAll('.set-row')).map(row => {
+      const repsVal = row.querySelector('.set-reps').value;
+      const weightVal = row.querySelector('.set-weight').value;
+      return {
+        reps: repsVal ? Number(repsVal) : null,
+        weight: weightVal ? Number(weightVal) : null,
+      };
+    }).filter(s => s.reps != null || s.weight != null);
+  }
+
   function applyLastTime(input, value) {
     const form = input.closest('form');
     const note = form.querySelector('.last-time-note');
-    form.querySelector('[name="sets"]').value = '';
-    form.querySelector('[name="reps"]').value = '';
-    form.querySelector('[name="weight"]').value = '';
-    if (!value) { note.style.display = 'none'; note.textContent = ''; return; }
+    const editorEl = form.querySelector('.sets-editor');
+    if (!value) {
+      note.style.display = 'none'; note.textContent = '';
+      replaceSetRows(editorEl, null);
+      return;
+    }
     const last = entries.find(e => e.exercise_name.toLowerCase() === value.trim().toLowerCase());
-    if (!last) { note.style.display = 'none'; note.textContent = ''; return; }
-    form.querySelector('[name="sets"]').value = last.sets ?? '';
-    form.querySelector('[name="reps"]').value = last.reps ?? '';
-    form.querySelector('[name="weight"]').value = last.weight ?? '';
-    note.textContent = `Last time (${formatShortDate(last.entry_date)}): ${[
-      last.sets != null ? last.sets + ' sets' : null,
-      last.reps != null ? last.reps + ' reps' : null,
-      last.weight != null ? last.weight + ' kg' : null
-    ].filter(Boolean).join(' · ') || 'no details recorded'}`;
+    if (!last) {
+      note.style.display = 'none'; note.textContent = '';
+      replaceSetRows(editorEl, null);
+      return;
+    }
+    replaceSetRows(editorEl, last.workout_sets);
+    const summary = setsSummary(last.workout_sets) || 'no details recorded';
+    note.textContent = `Last time (${formatShortDate(last.entry_date)}): ${summary}`;
     note.style.display = 'block';
   }
 
@@ -449,16 +568,7 @@
       </div>
       <div class="row">
         <div>
-          <label>Sets</label>
-          <input type="number" name="sets" min="0" step="1" placeholder="3" value="${e.sets ?? ''}" />
-        </div>
-        <div>
-          <label>Reps</label>
-          <input type="number" name="reps" min="0" step="1" placeholder="10" value="${e.reps ?? ''}" />
-        </div>
-        <div>
-          <label>Weight (kg)</label>
-          <input type="number" name="weight" min="0" step="0.5" placeholder="optional" value="${e.weight ?? ''}" />
+          ${setsEditorHtml(prefix, e.workout_sets)}
         </div>
       </div>
       <div class="row">
@@ -504,11 +614,7 @@
               <div class="entry" data-entry-id="${e.id}">
                 <div class="entry-main">
                   <div class="entry-name">${escapeHtml(e.exercise_name)}</div>
-                  <div class="entry-stats">${[
-                    e.sets != null ? e.sets + ' sets' : null,
-                    e.reps != null ? e.reps + ' reps' : null,
-                    e.weight != null ? e.weight + ' kg' : null
-                  ].filter(Boolean).join(' · ') || '—'}</div>
+                  <div class="entry-stats">${setsSummary(e.workout_sets) || 'No sets recorded'}</div>
                   ${e.comment ? `<div class="entry-comment">${escapeHtml(e.comment)}</div>` : ''}
                 </div>
               </div>
@@ -540,6 +646,8 @@
       const isNewEntryForm = inputEl.closest('form').id === 'entryForm';
       setupExerciseCombo(inputEl, isNewEntryForm ? (value) => applyLastTime(inputEl, value) : null);
     });
+
+    document.querySelectorAll('.sets-editor').forEach(setupSetsEditor);
 
     document.querySelectorAll('.profile-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
@@ -588,9 +696,6 @@
     return {
       exercise_name: fd.get('exercise_name').trim(),
       entry_date: fd.get('entry_date'),
-      sets: fd.get('sets') ? Number(fd.get('sets')) : null,
-      reps: fd.get('reps') ? Number(fd.get('reps')) : null,
-      weight: fd.get('weight') ? Number(fd.get('weight')) : null,
       comment: fd.get('comment') ? fd.get('comment').trim() : null,
     };
   }
@@ -602,16 +707,22 @@
     submitBtn.disabled = true;
     submitBtn.textContent = 'Saving…';
 
-    const payload = { profile_id: activeProfileId, ...readEntryForm(form) };
+    const entryPayload = { profile_id: activeProfileId, ...readEntryForm(form) };
+    const sets = readSetsFromForm(form);
 
-    const { error } = await supabase.from('workout_entries').insert(payload);
+    const { data, error } = await supabase.from('workout_entries').insert(entryPayload).select().single();
     if (error) {
       alert('Could not save: ' + error.message);
       submitBtn.disabled = false;
       submitBtn.textContent = 'Add entry';
       return;
     }
-    await ensureExercise(payload.exercise_name);
+    if (sets.length) {
+      const setRows = sets.map((s, i) => ({ entry_id: data.id, set_number: i + 1, reps: s.reps, weight: s.weight }));
+      const { error: setsError } = await supabase.from('workout_sets').insert(setRows);
+      if (setsError) alert('Entry saved, but sets failed to save: ' + setsError.message);
+    }
+    await ensureExercise(entryPayload.exercise_name);
     await loadEntries();
     render();
   }
@@ -624,15 +735,23 @@
     saveBtn.disabled = true;
     saveBtn.textContent = 'Saving…';
 
-    const payload = readEntryForm(form);
-    const { error } = await supabase.from('workout_entries').update(payload).eq('id', id);
+    const entryPayload = readEntryForm(form);
+    const sets = readSetsFromForm(form);
+
+    const { error } = await supabase.from('workout_entries').update(entryPayload).eq('id', id);
     if (error) {
       alert('Could not save: ' + error.message);
       saveBtn.disabled = false;
       saveBtn.textContent = 'Save';
       return;
     }
-    await ensureExercise(payload.exercise_name);
+    await supabase.from('workout_sets').delete().eq('entry_id', id);
+    if (sets.length) {
+      const setRows = sets.map((s, i) => ({ entry_id: id, set_number: i + 1, reps: s.reps, weight: s.weight }));
+      const { error: setsError } = await supabase.from('workout_sets').insert(setRows);
+      if (setsError) alert('Entry saved, but sets failed to save: ' + setsError.message);
+    }
+    await ensureExercise(entryPayload.exercise_name);
     editingId = null;
     await loadEntries();
     render();
