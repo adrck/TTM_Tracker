@@ -256,6 +256,7 @@
   }
   .combo-option:hover { background: var(--ink-soft); color: var(--coral); }
   .combo-option.add-new { color: var(--steel); font-style: italic; }
+  .combo-option.back-option { color: var(--steel); border-bottom: 1px solid var(--line); }
 
   .last-time-note {
     font-family: 'Space Mono', monospace;
@@ -487,8 +488,7 @@
     }).filter(s => s.reps != null || s.weight != null);
   }
 
-  function applyLastTime(input, value) {
-    const form = input.closest('form');
+  function applyLastTime(form, value) {
     const note = form.querySelector('.last-time-note');
     const editorEl = form.querySelector('.sets-editor');
     if (!value) {
@@ -509,35 +509,41 @@
     note.style.display = 'block';
   }
 
-  function setupExerciseCombo(input, onSelectExisting) {
+  function setupExerciseCombo(input, onSelectExisting, startCustom) {
     const dropdown = input.nextElementSibling;
-    let customMode = false;
+    let customMode = !!startCustom;
 
-    function renderOptions() {
-      const q = customMode ? input.value.trim().toLowerCase() : '';
+    function showBrowseList() {
+      customMode = false;
+      const html = exercises.map(x =>
+        `<div class="combo-option" data-value="${escapeHtml(x.name)}">${escapeHtml(x.name)}</div>`
+      ).join('') + `<div class="combo-option add-new" data-action="new">+ Enter a new exercise…</div>`;
+      dropdown.innerHTML = html;
+      dropdown.style.display = 'block';
+    }
+
+    function showTypeaheadList() {
+      const q = input.value.trim().toLowerCase();
       const filtered = exercises.filter(x => x.name.toLowerCase().includes(q));
-      let html = filtered.map(x =>
+      let html = `<div class="combo-option back-option" data-action="back">← Back to list</div>`;
+      html += filtered.map(x =>
         `<div class="combo-option" data-value="${escapeHtml(x.name)}">${escapeHtml(x.name)}</div>`
       ).join('');
-      if (customMode) {
-        if (input.value.trim() && !exercises.some(x => x.name.toLowerCase() === q)) {
-          html += `<div class="combo-option add-new" data-value="${escapeHtml(input.value.trim())}">Use "${escapeHtml(input.value.trim())}"</div>`;
-        }
-      } else {
-        html += `<div class="combo-option add-new" data-action="new">+ Enter a new exercise…</div>`;
+      if (input.value.trim() && !exercises.some(x => x.name.toLowerCase() === q)) {
+        html += `<div class="combo-option add-new" data-value="${escapeHtml(input.value.trim())}">Use "${escapeHtml(input.value.trim())}"</div>`;
       }
       dropdown.innerHTML = html;
       dropdown.style.display = 'block';
     }
 
     input.addEventListener('focus', () => {
-      if (!customMode) renderOptions();
+      if (!customMode) showBrowseList();
     });
     input.addEventListener('click', () => {
-      if (!customMode) renderOptions();
+      if (!customMode) showBrowseList();
     });
     input.addEventListener('input', () => {
-      if (customMode) renderOptions();
+      if (customMode) showTypeaheadList();
     });
     input.addEventListener('blur', () => {
       setTimeout(() => {
@@ -545,25 +551,53 @@
         if (!customMode) input.readOnly = true;
       }, 150);
     });
+
+    if (customMode) showTypeaheadList();
+
     dropdown.addEventListener('mousedown', (ev) => {
       const opt = ev.target.closest('.combo-option');
       if (!opt) return;
       ev.preventDefault();
-      if (opt.dataset.action === 'new') {
-        customMode = true;
-        input.readOnly = false;
-        input.value = '';
-        input.placeholder = 'Tap here, then type the exercise name…';
-        dropdown.style.display = 'none';
-        if (onSelectExisting) onSelectExisting(null);
-      } else {
-        input.value = opt.dataset.value;
+
+      if (opt.dataset.action === 'back') {
         customMode = false;
         input.readOnly = true;
+        input.value = '';
+        input.placeholder = 'Tap to pick an exercise…';
         dropdown.style.display = 'none';
-        input.blur();
-        if (onSelectExisting) onSelectExisting(opt.dataset.value);
+        if (onSelectExisting) onSelectExisting(null);
+        return;
       }
+
+      if (opt.dataset.action === 'new') {
+        // Swap in a brand-new input (and dropdown, so no stale listeners
+        // linger) rather than reusing this one. A fresh element that's
+        // never been readonly reliably gets the on-screen keyboard when
+        // focused; toggling readonly on an already-focused field does not.
+        const fresh = document.createElement('input');
+        fresh.type = 'text';
+        fresh.name = 'exercise_name';
+        fresh.required = true;
+        fresh.autocomplete = 'off';
+        fresh.id = input.id;
+        fresh.placeholder = 'Type the exercise name…';
+        input.replaceWith(fresh);
+        const freshDropdown = document.createElement('div');
+        freshDropdown.className = 'combo-dropdown';
+        dropdown.replaceWith(freshDropdown);
+        setupExerciseCombo(fresh, onSelectExisting, true);
+        fresh.focus();
+        if (onSelectExisting) onSelectExisting(null);
+        return;
+      }
+
+      input.value = opt.dataset.value;
+      customMode = false;
+      input.readOnly = true;
+      input.placeholder = 'Tap to pick an exercise…';
+      dropdown.style.display = 'none';
+      input.blur();
+      if (onSelectExisting) onSelectExisting(opt.dataset.value);
     });
   }
 
@@ -658,8 +692,9 @@
     `;
 
     document.querySelectorAll('input[name="exercise_name"]').forEach(inputEl => {
-      const isNewEntryForm = inputEl.closest('form').id === 'entryForm';
-      setupExerciseCombo(inputEl, isNewEntryForm ? (value) => applyLastTime(inputEl, value) : null);
+      const formEl = inputEl.closest('form');
+      const isNewEntryForm = formEl.id === 'entryForm';
+      setupExerciseCombo(inputEl, isNewEntryForm ? (value) => applyLastTime(formEl, value) : null);
     });
 
     document.querySelectorAll('.sets-editor').forEach(setupSetsEditor);
