@@ -414,12 +414,17 @@
     return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   }
 
+  function formatWeight(w) {
+    if (w == null) return null;
+    return String(w).replace('.', ',');
+  }
+
   function setsSummary(sets) {
     if (!sets || sets.length === 0) return null;
     return sets.map(s => {
-      if (s.reps != null && s.weight != null) return `${s.reps}×${s.weight}kg`;
+      if (s.reps != null && s.weight != null) return `${s.reps}×${formatWeight(s.weight)}kg`;
       if (s.reps != null) return `${s.reps} reps`;
-      if (s.weight != null) return `${s.weight}kg`;
+      if (s.weight != null) return `${formatWeight(s.weight)}kg`;
       return '—';
     }).join(' · ');
   }
@@ -430,7 +435,7 @@
       <div class="set-row" data-index="${index}">
         <span class="set-num">${index + 1}</span>
         <input type="number" class="set-reps" min="0" step="1" placeholder="reps" value="${s.reps ?? ''}" />
-        <input type="number" class="set-weight" min="0" step="0.5" placeholder="kg" value="${s.weight ?? ''}" />
+        <input type="text" inputmode="decimal" class="set-weight" placeholder="kg" value="${formatWeight(s.weight) ?? ''}" />
         <button type="button" class="set-remove" title="Remove set">×</button>
       </div>
     `;
@@ -479,7 +484,7 @@
   function readSetsFromForm(form) {
     return Array.from(form.querySelectorAll('.set-row')).map(row => {
       const repsVal = row.querySelector('.set-reps').value;
-      const weightVal = row.querySelector('.set-weight').value;
+      const weightVal = row.querySelector('.set-weight').value.trim().replace(',', '.');
       return {
         reps: repsVal ? Number(repsVal) : null,
         weight: weightVal ? Number(weightVal) : null,
