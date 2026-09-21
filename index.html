@@ -17,7 +17,7 @@
     --line: rgba(241,239,232,0.12);
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; overflow-x: hidden; }
+  html, body { margin: 0; padding: 0; }
   body {
     background: var(--ink);
     color: var(--paper);
@@ -434,7 +434,11 @@
     return `
       <div class="set-row" data-index="${index}">
         <span class="set-num">${index + 1}</span>
+<<<<<<< HEAD
         <input type="number" class="set-reps" min="0" step="1" placeholder="reps" value="${s.reps ?? ''}" />
+=======
+        <input type="text" inputmode="numeric" pattern="[0-9]*" class="set-reps" placeholder="reps" value="${s.reps ?? ''}" />
+>>>>>>> 387c93a (Merge same day exercise entries)
         <input type="text" inputmode="decimal" class="set-weight" placeholder="kg" value="${formatWeight(s.weight) ?? ''}" />
         <button type="button" class="set-remove" title="Remove set">×</button>
       </div>
