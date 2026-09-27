@@ -199,7 +199,9 @@
   }
 
   .entry { cursor: pointer; }
-  .entry:hover .entry-name { color: var(--coral); }
+  @media (hover: hover) {
+    .entry:hover .entry-name { color: var(--coral); }
+  }
 
   .edit-panel {
     padding: 14px 0;
