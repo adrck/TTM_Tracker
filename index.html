@@ -266,6 +266,15 @@
     margin: 6px 0 12px;
   }
 
+  .trend-indicator {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--steel);
+    margin: -2px 0 12px;
+  }
+  .trend-indicator.trend-up { color: var(--coral); }
+  .trend-baseline { color: var(--paper-dim); }
+
   .sets-editor label { margin-bottom: 8px; }
   .set-rows { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
   .set-row {
@@ -282,6 +291,12 @@
     text-align: center;
   }
   .set-row input { flex: 1; min-width: 0; }
+  .set-unit {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    color: var(--steel);
+    flex-shrink: 0;
+  }
   .set-remove {
     background: none;
     border: 1px solid var(--line);
@@ -421,9 +436,16 @@
     return String(w).replace('.', ',');
   }
 
+  function getExerciseType(name) {
+    if (!name) return 'strength';
+    const ex = exercises.find(x => x.name.toLowerCase() === name.trim().toLowerCase());
+    return ex && ex.type ? ex.type : 'strength';
+  }
+
   function setsSummary(sets) {
     if (!sets || sets.length === 0) return null;
     return sets.map(s => {
+      if (s.duration_seconds != null) return `${s.duration_seconds}s`;
       if (s.reps != null && s.weight != null) return `${s.reps}×${formatWeight(s.weight)}kg`;
       if (s.reps != null) return `${s.reps} reps`;
       if (s.weight != null) return `${formatWeight(s.weight)}kg`;
@@ -431,8 +453,18 @@
     }).join(' · ');
   }
 
-  function setRowHtml(index, s) {
+  function setRowHtml(index, s, type) {
     s = s || {};
+    if (type === 'duration') {
+      return `
+        <div class="set-row" data-index="${index}">
+          <span class="set-num">${index + 1}</span>
+          <input type="text" inputmode="numeric" pattern="[0-9]*" class="set-duration" placeholder="duration" value="${s.duration_seconds ?? ''}" />
+          <span class="set-unit">sec</span>
+          <button type="button" class="set-remove" title="Remove set">×</button>
+        </div>
+      `;
+    }
     return `
       <div class="set-row" data-index="${index}">
         <span class="set-num">${index + 1}</span>
@@ -443,11 +475,12 @@
     `;
   }
 
-  function setsEditorHtml(prefix, sets) {
-    const rows = (sets && sets.length ? sets : [{}, {}, {}]).map((s, i) => setRowHtml(i, s)).join('');
+  function setsEditorHtml(prefix, sets, type) {
+    type = type || 'strength';
+    const rows = (sets && sets.length ? sets : [{}, {}, {}]).map((s, i) => setRowHtml(i, s, type)).join('');
     return `
-      <div class="sets-editor" id="${prefix}_setsEditor">
-        <label>Sets</label>
+      <div class="sets-editor" id="${prefix}_setsEditor" data-type="${type}">
+        <label>${type === 'duration' ? 'Duration per set' : 'Sets'}</label>
         <div class="set-rows">${rows}</div>
         <button type="button" class="add-set-btn">+ Add set</button>
       </div>
@@ -463,35 +496,90 @@
 
   function setupSetsEditor(editorEl) {
     const rowsEl = editorEl.querySelector('.set-rows');
+    const form = editorEl.closest('form');
     editorEl.querySelector('.add-set-btn').addEventListener('click', () => {
+      const type = editorEl.dataset.type || 'strength';
       const div = document.createElement('div');
-      div.innerHTML = setRowHtml(rowsEl.children.length, {});
+      div.innerHTML = setRowHtml(rowsEl.children.length, {}, type);
       rowsEl.appendChild(div.firstElementChild);
       renumberSetRows(rowsEl);
+      updateTrendIndicator(form);
     });
     rowsEl.addEventListener('click', (ev) => {
       const btn = ev.target.closest('.set-remove');
       if (!btn) return;
       btn.closest('.set-row').remove();
       renumberSetRows(rowsEl);
+      updateTrendIndicator(form);
     });
+    rowsEl.addEventListener('input', () => updateTrendIndicator(form));
   }
 
-  function replaceSetRows(editorEl, sets) {
+  function calcVolume(sets, type) {
+    if (!sets || !sets.length) return null;
+    let total;
+    if (type === 'duration') {
+      total = sets.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
+    } else {
+      total = sets.reduce((sum, s) => sum + ((s.reps || 0) * (s.weight || 0)), 0);
+    }
+    return total > 0 ? total : null;
+  }
+
+  function updateTrendIndicator(form) {
+    const editorEl = form.querySelector('.sets-editor');
+    const trendEl = form.querySelector('.trend-indicator');
+    if (!editorEl || !trendEl) return;
+    const baseline = editorEl.dataset.lastVolume;
+    if (!baseline) {
+      trendEl.style.display = 'none';
+      trendEl.textContent = '';
+      return;
+    }
+    const baselineNum = Number(baseline);
+    const type = editorEl.dataset.type || 'strength';
+    const current = calcVolume(readSetsFromForm(form), type);
+    if (current == null) {
+      trendEl.style.display = 'none';
+      trendEl.textContent = '';
+      return;
+    }
+    const unit = type === 'duration' ? 's' : 'kg';
+    const fmt = (n) => type === 'duration' ? String(Math.round(n)) : formatWeight(Math.round(n * 10) / 10);
+    let arrow = '→';
+    if (current > baselineNum) arrow = '↑';
+    else if (current < baselineNum) arrow = '↓';
+    trendEl.innerHTML = `${arrow} So far: ${fmt(current)}${unit} <span class="trend-baseline">(last time: ${fmt(baselineNum)}${unit})</span>`;
+    trendEl.classList.toggle('trend-up', current > baselineNum);
+    trendEl.style.display = 'block';
+  }
+
+  function rebuildSetsEditor(editorEl, sets, type) {
+    type = type || 'strength';
+    editorEl.dataset.type = type;
+    const label = editorEl.querySelector('label');
+    if (label) label.textContent = type === 'duration' ? 'Duration per set' : 'Sets';
     const rowsEl = editorEl.querySelector('.set-rows');
     const list = sets && sets.length ? sets : [{}, {}, {}];
-    rowsEl.innerHTML = list.map((s, i) => setRowHtml(i, s)).join('');
+    rowsEl.innerHTML = list.map((s, i) => setRowHtml(i, s, type)).join('');
   }
 
   function readSetsFromForm(form) {
+    const editorEl = form.querySelector('.sets-editor');
+    const type = editorEl ? (editorEl.dataset.type || 'strength') : 'strength';
     return Array.from(form.querySelectorAll('.set-row')).map(row => {
+      if (type === 'duration') {
+        const durVal = row.querySelector('.set-duration').value.trim();
+        return { reps: null, weight: null, duration_seconds: durVal ? Number(durVal) : null };
+      }
       const repsVal = row.querySelector('.set-reps').value;
       const weightVal = row.querySelector('.set-weight').value.trim().replace(',', '.');
       return {
         reps: repsVal ? Number(repsVal) : null,
         weight: weightVal ? Number(weightVal) : null,
+        duration_seconds: null,
       };
-    }).filter(s => s.reps != null || s.weight != null);
+    }).filter(s => s.reps != null || s.weight != null || s.duration_seconds != null);
   }
 
   function applyLastTime(form, value) {
@@ -499,20 +587,28 @@
     const editorEl = form.querySelector('.sets-editor');
     if (!value) {
       note.style.display = 'none'; note.textContent = '';
-      replaceSetRows(editorEl, null);
+      editorEl.dataset.lastVolume = '';
+      rebuildSetsEditor(editorEl, null, 'strength');
+      updateTrendIndicator(form);
       return;
     }
+    const type = getExerciseType(value);
     const last = entries.find(e => e.exercise_name.toLowerCase() === value.trim().toLowerCase());
     if (!last) {
       note.style.display = 'none'; note.textContent = '';
-      replaceSetRows(editorEl, null);
+      editorEl.dataset.lastVolume = '';
+      rebuildSetsEditor(editorEl, null, type);
+      updateTrendIndicator(form);
       return;
     }
-    replaceSetRows(editorEl, last.workout_sets);
+    rebuildSetsEditor(editorEl, last.workout_sets, type);
     const summary = setsSummary(last.workout_sets) || 'no details recorded';
     const label = last.entry_date === todayISO() ? 'Already logged today' : `Last time (${formatShortDate(last.entry_date)})`;
     note.textContent = `${label}: ${summary}`;
     note.style.display = 'block';
+    const baselineVolume = calcVolume(last.workout_sets, type);
+    editorEl.dataset.lastVolume = baselineVolume != null ? String(baselineVolume) : '';
+    updateTrendIndicator(form);
   }
 
   function setupExerciseCombo(input, onSelectExisting, startCustom) {
@@ -536,7 +632,9 @@
         `<div class="combo-option" data-value="${escapeHtml(x.name)}">${escapeHtml(x.name)}</div>`
       ).join('');
       if (input.value.trim() && !exercises.some(x => x.name.toLowerCase() === q)) {
-        html += `<div class="combo-option add-new" data-value="${escapeHtml(input.value.trim())}">Use "${escapeHtml(input.value.trim())}"</div>`;
+        const name = input.value.trim();
+        html += `<div class="combo-option add-new" data-value="${escapeHtml(name)}" data-new-type="strength">Add "${escapeHtml(name)}" — reps &amp; weight</div>`;
+        html += `<div class="combo-option add-new" data-value="${escapeHtml(name)}" data-new-type="duration">Add "${escapeHtml(name)}" — duration only</div>`;
       }
       dropdown.innerHTML = html;
       dropdown.style.display = 'block';
@@ -560,7 +658,7 @@
 
     if (customMode) showTypeaheadList();
 
-    dropdown.addEventListener('mousedown', (ev) => {
+    dropdown.addEventListener('mousedown', async (ev) => {
       const opt = ev.target.closest('.combo-option');
       if (!opt) return;
       ev.preventDefault();
@@ -597,6 +695,24 @@
         return;
       }
 
+      if (opt.dataset.newType) {
+        const name = opt.dataset.value;
+        const { data, error } = await supabase.from('exercises').insert({ name, type: opt.dataset.newType }).select().single();
+        if (error) {
+          alert('Could not add exercise: ' + error.message);
+          return;
+        }
+        exercises.push(data);
+        input.value = name;
+        customMode = false;
+        input.readOnly = true;
+        input.placeholder = 'Tap to pick an exercise…';
+        dropdown.style.display = 'none';
+        input.blur();
+        if (onSelectExisting) onSelectExisting(name);
+        return;
+      }
+
       input.value = opt.dataset.value;
       customMode = false;
       input.readOnly = true;
@@ -609,6 +725,7 @@
 
   function entryFormFieldsHtml(prefix, e) {
     e = e || {};
+    const type = e.exercise_name ? getExerciseType(e.exercise_name) : 'strength';
     return `
       <div class="row">
         <div>
@@ -621,9 +738,10 @@
         </div>
       </div>
       <div class="last-time-note" style="display:none;"></div>
+      <div class="trend-indicator" style="display:none;"></div>
       <div class="row">
         <div>
-          ${setsEditorHtml(prefix, e.workout_sets)}
+          ${setsEditorHtml(prefix, e.workout_sets, type)}
         </div>
       </div>
       <div class="row">
@@ -700,7 +818,9 @@
     document.querySelectorAll('input[name="exercise_name"]').forEach(inputEl => {
       const formEl = inputEl.closest('form');
       const isNewEntryForm = formEl.id === 'entryForm';
-      setupExerciseCombo(inputEl, isNewEntryForm ? (value) => applyLastTime(formEl, value) : null);
+      setupExerciseCombo(inputEl, isNewEntryForm
+        ? (value) => applyLastTime(formEl, value)
+        : (value) => rebuildSetsEditor(formEl.querySelector('.sets-editor'), null, getExerciseType(value)));
     });
 
     document.querySelectorAll('.sets-editor').forEach(setupSetsEditor);
@@ -798,7 +918,7 @@
     }
 
     if (sets.length) {
-      const setRows = sets.map((s, i) => ({ entry_id: entryId, set_number: i + 1, reps: s.reps, weight: s.weight }));
+      const setRows = sets.map((s, i) => ({ entry_id: entryId, set_number: i + 1, reps: s.reps, weight: s.weight, duration_seconds: s.duration_seconds }));
       const { error: setsError } = await supabase.from('workout_sets').insert(setRows);
       if (setsError) alert('Entry saved, but sets failed to save: ' + setsError.message);
     }
@@ -827,7 +947,7 @@
     }
     await supabase.from('workout_sets').delete().eq('entry_id', id);
     if (sets.length) {
-      const setRows = sets.map((s, i) => ({ entry_id: id, set_number: i + 1, reps: s.reps, weight: s.weight }));
+      const setRows = sets.map((s, i) => ({ entry_id: id, set_number: i + 1, reps: s.reps, weight: s.weight, duration_seconds: s.duration_seconds }));
       const { error: setsError } = await supabase.from('workout_sets').insert(setRows);
       if (setsError) alert('Entry saved, but sets failed to save: ' + setsError.message);
     }
