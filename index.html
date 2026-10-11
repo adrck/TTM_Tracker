@@ -272,7 +272,8 @@
     color: var(--steel);
     margin: -2px 0 12px;
   }
-  .trend-indicator.trend-up { color: var(--coral); }
+  .trend-indicator .trend-up, .trend-indicator .trend-record { color: var(--coral); }
+  .trend-indicator .trend-record { font-weight: 700; }
   .trend-baseline { color: var(--paper-dim); }
 
   .sets-editor label { margin-bottom: 8px; }
@@ -513,6 +514,11 @@
       updateTrendIndicator(form);
     });
     rowsEl.addEventListener('input', () => updateTrendIndicator(form));
+    const dateInput = form.querySelector('input[name="entry_date"]');
+    if (dateInput) {
+      dateInput.addEventListener('input', () => updateTrendIndicator(form));
+      dateInput.addEventListener('change', () => updateTrendIndicator(form));
+    }
   }
 
   function calcVolume(sets, type) {
@@ -529,28 +535,55 @@
   function updateTrendIndicator(form) {
     const editorEl = form.querySelector('.sets-editor');
     const trendEl = form.querySelector('.trend-indicator');
-    if (!editorEl || !trendEl) return;
-    const baseline = editorEl.dataset.lastVolume;
-    if (!baseline) {
-      trendEl.style.display = 'none';
-      trendEl.textContent = '';
-      return;
-    }
-    const baselineNum = Number(baseline);
+    // live comparison only makes sense when logging a new session, not when editing an old one
+    if (!editorEl || !trendEl || form.id !== 'entryForm') return;
+    const hide = () => { trendEl.style.display = 'none'; trendEl.innerHTML = ''; };
+
+    const nameInput = form.querySelector('input[name="exercise_name"]');
+    const dateInput = form.querySelector('input[name="entry_date"]');
+    const key = nameInput ? nameInput.value.trim().toLowerCase() : '';
+    const dateISO = (dateInput && dateInput.value) || todayISO();
+    if (!key) return hide();
+
+    // Only sessions on an EARLIER date count: today's own earlier sets are part of the
+    // session being logged (they get merged into it), so they are not a baseline.
+    const prev = entries.filter(e => e.exercise_name.toLowerCase() === key && e.entry_date < dateISO);
+    if (!prev.length) return hide();
+
     const type = editorEl.dataset.type || 'strength';
     const current = calcVolume(readSetsFromForm(form), type);
-    if (current == null) {
-      trendEl.style.display = 'none';
-      trendEl.textContent = '';
-      return;
+    if (current == null) return hide();
+
+    const lastVol = calcVolume(prev[0].workout_sets, type); // entries are sorted newest first
+    let bestVol = 0;
+    for (const e of prev) {
+      const v = calcVolume(e.workout_sets, type) || 0;
+      if (v > bestVol) bestVol = v;
     }
+
     const unit = type === 'duration' ? 's' : 'kg';
     const fmt = (n) => type === 'duration' ? String(Math.round(n)) : formatWeight(Math.round(n * 10) / 10);
-    let arrow = '→';
-    if (current > baselineNum) arrow = '↑';
-    else if (current < baselineNum) arrow = '↓';
-    trendEl.innerHTML = `${arrow} So far: ${fmt(current)}${unit} <span class="trend-baseline">(last time: ${fmt(baselineNum)}${unit})</span>`;
-    trendEl.classList.toggle('trend-up', current > baselineNum);
+    const EPS = 1e-6;
+
+    let html = '';
+    if (lastVol != null) {
+      let arrow = '→';
+      if (current > lastVol + EPS) arrow = '↑';
+      else if (current < lastVol - EPS) arrow = '↓';
+      html += `<div class="${arrow === '↑' ? 'trend-up' : ''}">${arrow} So far: ${fmt(current)}${unit} <span class="trend-baseline">(last time: ${fmt(lastVol)}${unit})</span></div>`;
+    } else {
+      html += `<div>So far: ${fmt(current)}${unit}</div>`;
+    }
+    if (bestVol > 0) {
+      if (current > bestVol + EPS) {
+        html += `<div class="trend-record">★ New personal record! <span class="trend-baseline">(previous best: ${fmt(bestVol)}${unit})</span></div>`;
+      } else if (Math.abs(current - bestVol) <= EPS) {
+        html += `<div class="trend-baseline">Level with your personal best (${fmt(bestVol)}${unit})</div>`;
+      } else {
+        html += `<div class="trend-baseline">Personal best: ${fmt(bestVol)}${unit}</div>`;
+      }
+    }
+    trendEl.innerHTML = html;
     trendEl.style.display = 'block';
   }
 
@@ -587,7 +620,6 @@
     const editorEl = form.querySelector('.sets-editor');
     if (!value) {
       note.style.display = 'none'; note.textContent = '';
-      editorEl.dataset.lastVolume = '';
       rebuildSetsEditor(editorEl, null, 'strength');
       updateTrendIndicator(form);
       return;
@@ -596,7 +628,6 @@
     const last = entries.find(e => e.exercise_name.toLowerCase() === value.trim().toLowerCase());
     if (!last) {
       note.style.display = 'none'; note.textContent = '';
-      editorEl.dataset.lastVolume = '';
       rebuildSetsEditor(editorEl, null, type);
       updateTrendIndicator(form);
       return;
@@ -606,8 +637,6 @@
     const label = last.entry_date === todayISO() ? 'Already logged today' : `Last time (${formatShortDate(last.entry_date)})`;
     note.textContent = `${label}: ${summary}`;
     note.style.display = 'block';
-    const baselineVolume = calcVolume(last.workout_sets, type);
-    editorEl.dataset.lastVolume = baselineVolume != null ? String(baselineVolume) : '';
     updateTrendIndicator(form);
   }
 
